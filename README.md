@@ -6,9 +6,11 @@ Tamagotchi emulator on 4.2" eInk display
 
 Check out `justfile`
 
+We can't ship ROM within this repo. You can get yourself an Tamagotchi P1 ROM, named it `rom.bin` then run `just convert` to generate `rom.hpp`.
+
 ## Todo
 
-- [ ] ROM converting
+- [x] ROM converting
 - [ ] Display support
 - [ ] Wiring Button to emulator
 - [ ] Deep sleep support

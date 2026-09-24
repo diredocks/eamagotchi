@@ -5,6 +5,9 @@ build_dir := "build"
 
 default: build
 
+convert:
+    python3 rom_converter.py > rom.hpp
+
 build:
     arduino-cli compile --fqbn {{board}} --build-path {{build_dir}} .
 
