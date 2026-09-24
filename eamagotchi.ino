@@ -1,4 +1,5 @@
 #include <button.hpp>
+#include <display.hpp>
 
 void setupBoot() {
   Serial.begin(115200);
@@ -8,6 +9,7 @@ void setupBoot() {
 void setup() {
   setupBoot();
   setupButtons();
+  setupDisplay();
 }
 
 void loop() {
