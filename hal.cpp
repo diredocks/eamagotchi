@@ -1,6 +1,8 @@
 #include "globals.hpp"
 #include "config.hpp"
+
 #include "hal.hpp"
+#include "display.hpp"
 
 #include <Arduino.h>
 
@@ -35,7 +37,7 @@ static timestamp_t hal_get_timestamp(void) {
 
 static void hal_update_screen(void) {
   // TODO: if (!fast_forwarding) renderScreen();
-  // TODO: renderScreen();
+  renderScreen();
 }
 
 static void hal_set_lcd_matrix(u8_t x, u8_t y, bool_t val) {

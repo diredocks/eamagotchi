@@ -11,7 +11,7 @@ We can't ship ROM within this repo. You can get yourself an Tamagotchi P1 ROM, n
 ## Todo
 
 - [x] ROM converting
-- [ ] Display support
+- [x] Display support
 - [ ] Wiring Button to emulator
 - [ ] Deep sleep support
 - [ ] Save state

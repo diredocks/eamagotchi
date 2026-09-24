@@ -9,6 +9,7 @@ extern "C" {
 
 #include "globals.hpp"
 #include "hal.hpp"
+#include "display.hpp"
 
 OneButton button_up;
 OneButton button_dn;
@@ -20,6 +21,8 @@ bool_t matrix_buffer[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
 bool_t icon_buffer[TAMA_ICON_NUM];
 bool_t prev_matrix_buffer[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
 bool_t prev_icon_buffer[TAMA_ICON_NUM];
+
+unsigned long last_screen_update_ms = 0;
 
 u12_t rom_data[ROM_SIZE];
 
@@ -75,6 +78,7 @@ void setup() {
   
   // entering interactive mode
   // TODO: last_x variables for entering deep sleep
+  last_screen_update_ms = 0;
   
   Serial.println("[EAMA] entering interactive mode");
 }
@@ -92,7 +96,7 @@ void loop() {
   timestamp_t ts = (timestamp_t)micros();
   if (ts - loop_screen_ts >= (timestamp_t)(TAMA_TIMESTAMP_FREQ / TAMA_DISPLAY_FRAMERATE)) {
     loop_screen_ts = ts;
-    // TODO: renderScreen();
+    renderScreen();
   }
 
   // TODO: check idle timeout

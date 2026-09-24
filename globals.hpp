@@ -19,6 +19,8 @@ extern bool_t icon_buffer[TAMA_ICON_NUM];
 extern bool_t prev_matrix_buffer[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
 extern bool_t prev_icon_buffer[TAMA_ICON_NUM];
 
+extern unsigned long last_screen_update_ms;
+
 #define ROM_SIZE 6144
 extern u12_t rom_data[ROM_SIZE];
 
