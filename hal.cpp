@@ -61,6 +61,14 @@ static void hal_free(void *ptr) { free(ptr); }
 void tickButtons() {
   button_up.tick();
   button_dn.tick();
+
+  unsigned long now = millis();
+  for (uint8_t i = 0; i < 3; i++) {
+    if (emu_btn_release_ms[i] && now >= emu_btn_release_ms[i]) {
+      tamalib_set_button((button_t)i, BTN_STATE_RELEASED);
+      emu_btn_release_ms[i] = 0;
+    }
+  }
 }
 
 static int hal_handler(void) {
