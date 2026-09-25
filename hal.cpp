@@ -27,7 +27,7 @@ static void hal_sleep_until(timestamp_t ts) {
     timestamp_t now = (timestamp_t)micros();
     int32_t remaining = (int32_t)(ts - now);
     if (remaining <= 0 || remaining >= 1000000) break;
-    tickButtons();
+    pollButtons();
   }
 }
 
@@ -58,21 +58,11 @@ static void hal_play_frequency(bool_t en) { (void)en; }
 static void* hal_malloc(u32_t size) { return malloc(size); }
 static void hal_free(void *ptr) { free(ptr); }
 
-void tickButtons() {
-  button_up.tick();
-  button_dn.tick();
-
-  unsigned long now = millis();
-  for (uint8_t i = 0; i < 3; i++) {
-    if (emu_btn_release_ms[i] && now >= emu_btn_release_ms[i]) {
-      tamalib_set_button((button_t)i, BTN_STATE_RELEASED);
-      emu_btn_release_ms[i] = 0;
-    }
-  }
-}
+// TODO: pollButtons
+void pollButtons() {}
 
 static int hal_handler(void) {
-  tickButtons();
+  pollButtons();
   return 0; // Return 0 to keep running
 }
 

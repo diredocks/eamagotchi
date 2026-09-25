@@ -6,6 +6,6 @@ extern "C" {
 }
 
 extern hal_t hal;
-void tickButtons();
+void pollButtons();
 
 #endif // _EAMA_HAL_HPP_

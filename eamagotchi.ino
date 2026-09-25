@@ -11,9 +11,6 @@ extern "C" {
 #include "hal.hpp"
 #include "display.hpp"
 
-OneButton button_up;
-OneButton button_dn;
-
 GxEPD2_BW<GxEPD2_420_M01, GxEPD2_420_M01::HEIGHT>
   display(GxEPD2_420_M01(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 
@@ -23,24 +20,6 @@ bool_t prev_matrix_buffer[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
 bool_t prev_icon_buffer[TAMA_ICON_NUM];
 
 unsigned long last_screen_update_ms = 0;
-unsigned long emu_btn_release_ms[3] = {0, 0, 0};
-
-static void emuPulse(button_t btn) {
-  // last_button_ms = millis();
-  tamalib_set_button(btn, BTN_STATE_PRESSED);
-  emu_btn_release_ms[btn] = millis() + BTN_EMU_HOLD_MS;
-}
-
-static void emuHold(button_t btn) {
-  // last_button_ms = millis();
-  emu_btn_release_ms[btn] = 0;
-  tamalib_set_button(btn, BTN_STATE_PRESSED);
-}
-
-static void emuRelease(button_t btn) {
-  emu_btn_release_ms[btn] = 0;
-  tamalib_set_button(btn, BTN_STATE_RELEASED);
-}
 
 u12_t rom_data[ROM_SIZE];
 
@@ -61,17 +40,7 @@ void setup() {
 
   // TODO: determine wake cause
 
-  // initialize button pins
-  button_up.setup(BTN_UP_PIN, INPUT_PULLUP, true);
-  button_up.attachClick([]() { emuPulse(BTN_MIDDLE); });
-  button_up.attachLongPressStart([]() { emuHold(BTN_MIDDLE); });
-  button_up.attachLongPressStop([]() { emuRelease(BTN_MIDDLE); });
-  button_dn.setup(BTN_DN_PIN, INPUT_PULLUP, true);
-  button_dn.attachClick([]() { emuPulse(BTN_RIGHT); });
-  button_dn.attachDoubleClick([]() { emuPulse(BTN_LEFT); });
-  button_dn.attachLongPressStart([]() { emuHold(BTN_RIGHT); });
-  button_dn.attachLongPressStop([]() { emuRelease(BTN_RIGHT); });
-  Serial.println("[EAMA] buttons initialized");
+  // TODO: initialize button pins
 
   // TODO: reset states by double clicking down button
   
@@ -114,8 +83,7 @@ void loop() {
   // run emulation step
   tamalib_step();
 
-  // tick buttons
-  tickButtons();
+  // TODO: poll buttons
 
   // update screen at configured framerate
   timestamp_t ts = (timestamp_t)micros();
