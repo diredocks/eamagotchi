@@ -4,6 +4,7 @@
 // button
 #define BTN_UP_PIN 14 // upper button on device (black)
 #define BTN_DN_PIN 12 // lower button on device (white)
+#define BTN_DEBOUNCE_MS 50
 
 // tamalib - emulator settings
 #define TAMA_DISPLAY_FRAMERATE 6

@@ -8,4 +8,7 @@ extern "C" {
 extern hal_t hal;
 void pollButtons();
 
+void IRAM_ATTR btnISR_UP();
+void IRAM_ATTR btnISR_DN();
+
 #endif // _EAMA_HAL_HPP_

@@ -19,7 +19,15 @@ bool_t icon_buffer[TAMA_ICON_NUM];
 bool_t prev_matrix_buffer[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
 bool_t prev_icon_buffer[TAMA_ICON_NUM];
 
+unsigned long last_button_ms = 0;
 unsigned long last_screen_update_ms = 0;
+
+ButtonState buttons[] = {
+  // { BTN_A_PIN, BTN_LEFT,   false, false, 0 },
+  { BTN_UP_PIN, BTN_MIDDLE, false, false, 0 },
+  { BTN_DN_PIN, BTN_RIGHT,  false, false, 0 },
+};
+const int NUM_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 
 u12_t rom_data[ROM_SIZE];
 
@@ -40,7 +48,13 @@ void setup() {
 
   // TODO: determine wake cause
 
-  // TODO: initialize button pins
+  // initialize button pins
+  pinMode(BTN_UP_PIN, INPUT_PULLUP);
+  pinMode(BTN_DN_PIN, INPUT_PULLUP);
+
+  // attach GPIO interrupts for instant button capture
+  attachInterrupt(digitalPinToInterrupt(BTN_UP_PIN), btnISR_UP, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_DN_PIN), btnISR_DN, FALLING);
 
   // TODO: reset states by double clicking down button
   
@@ -71,7 +85,7 @@ void setup() {
   // TODO: render the screen based on wake cause
   
   // entering interactive mode
-  // TODO: last_x variables for entering deep sleep
+  last_button_ms = millis();
   last_screen_update_ms = 0;
   
   Serial.println("[EAMA] entering interactive mode");
@@ -83,7 +97,8 @@ void loop() {
   // run emulation step
   tamalib_step();
 
-  // TODO: poll buttons
+  // poll buttons
+  pollButtons();
 
   // update screen at configured framerate
   timestamp_t ts = (timestamp_t)micros();

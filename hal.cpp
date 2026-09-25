@@ -6,6 +6,11 @@
 
 #include <Arduino.h>
 
+static volatile bool btn_interrupt_flags[2] = {false, false};
+
+void IRAM_ATTR btnISR_UP() { btn_interrupt_flags[0] = true; }
+void IRAM_ATTR btnISR_DN() { btn_interrupt_flags[1] = true; }
+
 static bool_t hal_is_log_enabled(log_level_t level) {
   return (level == LOG_ERROR) ? 1 : 0;
 }
@@ -58,8 +63,39 @@ static void hal_play_frequency(bool_t en) { (void)en; }
 static void* hal_malloc(u32_t size) { return malloc(size); }
 static void hal_free(void *ptr) { free(ptr); }
 
-// TODO: pollButtons
-void pollButtons() {}
+void pollButtons() {
+  unsigned long now = millis();
+
+  for (int i = 0; i < NUM_BUTTONS; i++) {
+    // check if the ISR flagged a press (instant capture)
+    bool isr_pressed = btn_interrupt_flags[i];
+    if (isr_pressed) {
+      btn_interrupt_flags[i] = false;
+    }
+
+    bool current = (digitalRead(buttons[i].pin) == LOW) || isr_pressed;
+
+    if (current != buttons[i].stable_state) {
+      // reading differs from stable state — track as pending
+      if (current != buttons[i].pending_state) {
+        // new candidate, start the debounce timer
+        buttons[i].pending_state = current;
+        buttons[i].pending_since = now;
+      } else if (now - buttons[i].pending_since >= BTN_DEBOUNCE_MS) {
+        // candidate held for debounce period — accept it
+        buttons[i].stable_state = current;
+        tamalib_set_button(buttons[i].tama_btn,
+                           current ? BTN_STATE_PRESSED : BTN_STATE_RELEASED);
+        if (current) {
+          last_button_ms = now; // reset idle timeout
+        }
+      }
+    } else {
+      // reading matches stable state — reset pending
+      buttons[i].pending_state = current;
+    }
+  }
+}
 
 static int hal_handler(void) {
   pollButtons();
