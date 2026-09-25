@@ -5,6 +5,14 @@
 
 #include "display.hpp"
 
+// Staging frame published by the main loop and consumed by displayTask().
+// Only ever touched under render_mutex.
+static SemaphoreHandle_t render_mutex = nullptr;
+static bool_t render_matrix_buffer[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
+static bool_t render_icon_buffer[TAMA_ICON_NUM];
+static volatile bool render_pending = false;
+static volatile bool render_full_pending = false;
+
 void drawIcon(int x, int y, int iconIdx, bool active, bool hideWhenInactive) {
   if (hideWhenInactive && !active) return;
   const unsigned char* bmp = (const unsigned char*)pgm_read_ptr(&icon_allArray[iconIdx]);
@@ -17,13 +25,14 @@ void drawIcon(int x, int y, int iconIdx, bool active, bool hideWhenInactive) {
   }
 }
 
-void renderFrameContent() {
+void renderFrameContent(const bool_t matrix[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH],
+                        const bool_t icons[TAMA_ICON_NUM]) {
   display.fillScreen(GxEPD_WHITE);
 
   // Draw top icon row (indices 0-3: feed, light, play, medi)
   for (int i = 0; i < 4; i++) {
     int ix = i * ICON_SLOT_W + (ICON_SLOT_W - ICON_W) / 2;
-    drawIcon(ix, TOP_ICON_ROW_Y, i, icon_buffer[i]);
+    drawIcon(ix, TOP_ICON_ROW_Y, i, icons[i]);
   }
 
   // Draw bottom icon row (indices 4-7: duck, meter, scold, call)
@@ -31,13 +40,13 @@ void renderFrameContent() {
   for (int i = 0; i < 4; i++) {
     int ix = i * ICON_SLOT_W + (ICON_SLOT_W - ICON_W) / 2;
     bool hideWhenInactive = (i == 3); // index 7 = call
-    drawIcon(ix, BOT_ICON_ROW_Y, i + 4, icon_buffer[i + 4], hideWhenInactive);
+    drawIcon(ix, BOT_ICON_ROW_Y, i + 4, icons[i + 4], hideWhenInactive);
   }
 
   // Draw main LCD area (32x16 scaled by PIXEL_SCALE)
   for (int y = 0; y < TAMA_LCD_HEIGHT; y++) {
     for (int x = 0; x < TAMA_LCD_WIDTH; x++) {
-      if (matrix_buffer[y][x]) {
+      if (matrix[y][x]) {
         int px = LCD_OFFSET_X + x * PIXEL_SCALE;
         int py = LCD_OFFSET_Y + y * PIXEL_SCALE;
         // Draw filled rectangle with 1px gap for grid effect
@@ -47,59 +56,74 @@ void renderFrameContent() {
   }
 }
 
-void renderScreen() {
-  // Check if anything actually changed
-  bool changed = false;
-  for (int y = 0; y < TAMA_LCD_HEIGHT && !changed; y++) {
-    for (int x = 0; x < TAMA_LCD_WIDTH && !changed; x++) {
-      if (matrix_buffer[y][x] != prev_matrix_buffer[y][x]) {
-        changed = true;
+static void enqueueFrame(bool full) {
+  if (!render_mutex) return;
+  xSemaphoreTake(render_mutex, portMAX_DELAY);
+  memcpy(render_matrix_buffer, matrix_buffer, sizeof(render_matrix_buffer));
+  memcpy(render_icon_buffer, icon_buffer, sizeof(render_icon_buffer));
+  if (full) render_full_pending = true;
+  render_pending = true;
+  xSemaphoreGive(render_mutex);
+}
+
+void renderScreen() { enqueueFrame(false); }
+void renderScreenFull() { enqueueFrame(true); }
+void renderScreenPartial() { enqueueFrame(false); }
+
+void displayInit() {
+  render_mutex = xSemaphoreCreateMutex();
+}
+
+void displayTask(void *param) {
+  (void)param;
+  static bool_t local_matrix[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
+  static bool_t local_icons[TAMA_ICON_NUM];
+
+  for (;;) {
+    if (!render_pending) {
+      vTaskDelay(pdMS_TO_TICKS(5));
+      continue;
+    }
+
+    bool full;
+    xSemaphoreTake(render_mutex, portMAX_DELAY);
+    render_pending = false;
+    full = render_full_pending;
+    render_full_pending = false;
+    memcpy(local_matrix, render_matrix_buffer, sizeof(local_matrix));
+    memcpy(local_icons, render_icon_buffer, sizeof(local_icons));
+    xSemaphoreGive(render_mutex);
+
+    // Skip if nothing actually changed (full refreshes always run)
+    bool changed = full;
+    for (int y = 0; y < TAMA_LCD_HEIGHT && !changed; y++) {
+      for (int x = 0; x < TAMA_LCD_WIDTH && !changed; x++) {
+        if (local_matrix[y][x] != prev_matrix_buffer[y][x]) changed = true;
       }
     }
-  }
-  for (int i = 0; i < TAMA_ICON_NUM && !changed; i++) {
-    if (icon_buffer[i] != prev_icon_buffer[i]) {
-      changed = true;
+    for (int i = 0; i < TAMA_ICON_NUM && !changed; i++) {
+      if (local_icons[i] != prev_icon_buffer[i]) changed = true;
     }
+    if (!changed) continue;
+
+    // Rate limit: don't refresh faster than the e-ink can handle
+    unsigned long now = millis();
+    if (now - last_screen_update_ms < TAMA_SCREEN_MIN_MS) {
+      render_pending = true;
+      vTaskDelay(pdMS_TO_TICKS(10));
+      continue;
+    }
+    last_screen_update_ms = now;
+
+    // Commit prev before drawing so changes made during the refresh are kept
+    memcpy(prev_matrix_buffer, local_matrix, sizeof(local_matrix));
+    memcpy(prev_icon_buffer, local_icons, sizeof(local_icons));
+
+    if (full) display.setFullWindow();
+    else display.setPartialWindow(0, 0, EPD_WIDTH, EPD_HEIGHT);
+    display.firstPage();
+    do {
+      renderFrameContent(local_matrix, local_icons);
+    } while (display.nextPage());
   }
-
-  if (!changed) return;
-
-  // Rate limit: don't refresh faster than the e-ink can handle
-  unsigned long now = millis();
-  if (now - last_screen_update_ms < TAMA_SCREEN_MIN_MS) return;
-  last_screen_update_ms = now;
-
-  // Update previous buffers
-  memcpy(prev_matrix_buffer, matrix_buffer, sizeof(matrix_buffer));
-  memcpy(prev_icon_buffer, icon_buffer, sizeof(icon_buffer));
-
-  // Use partial refresh for the full display area
-  display.setPartialWindow(0, 0, EPD_WIDTH, EPD_HEIGHT);
-  display.firstPage();
-  do {
-    renderFrameContent();
-  } while (display.nextPage());
-}
-
-void renderScreenFull() {
-  memcpy(prev_matrix_buffer, matrix_buffer, sizeof(matrix_buffer));
-  memcpy(prev_icon_buffer, icon_buffer, sizeof(icon_buffer));
-
-  display.setFullWindow();
-  display.firstPage();
-  do {
-    renderFrameContent();
-  } while (display.nextPage());
-}
-
-void renderScreenPartial() {
-  memcpy(prev_matrix_buffer, matrix_buffer, sizeof(matrix_buffer));
-  memcpy(prev_icon_buffer, icon_buffer, sizeof(icon_buffer));
-
-  display.setPartialWindow(0, 0, EPD_WIDTH, EPD_HEIGHT);
-  display.firstPage();
-  do {
-    renderFrameContent();
-  } while (display.nextPage());
 }

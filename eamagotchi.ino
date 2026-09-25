@@ -63,6 +63,7 @@ void setup() {
   // TODO: use initial=false on timer wakes to avoid a full hardware clear
   display.init(115200);
   display.setRotation(0);
+  displayInit();
   Serial.println("[EAMA] display initialized");
 
   // load ROM from PROGMEM
@@ -88,7 +89,12 @@ void setup() {
   // entering interactive mode
   last_button_ms = millis();
   last_screen_update_ms = 0;
-  
+
+  // run blocking e-ink refreshes on the other core so button polling and the
+  // emulator keep running while the panel updates
+  xTaskCreatePinnedToCore(displayTask, "display", 8192, nullptr, 1, nullptr, 0);
+  Serial.println("[EAMA] display task started");
+
   Serial.println("[EAMA] entering interactive mode");
 }
 
