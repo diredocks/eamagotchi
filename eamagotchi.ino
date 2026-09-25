@@ -25,10 +25,8 @@ unsigned long last_screen_update_ms = 0;
 SemaphoreHandle_t render_mutex = NULL;
 
 ButtonState buttons[] = {
-  // UP: short press = MIDDLE, long press = LEFT (pulsed once)
-  { BTN_UP_PIN, BTN_MIDDLE, BTN_LEFT,  false, false, 0, 0, false },
-  // DN: RIGHT, held for as long as the physical button is held (no long press)
-  { BTN_DN_PIN, BTN_RIGHT,  BTN_RIGHT, false, false, 0, 0, false },
+  { BTN_UP_PIN, BTN_LEFT, BTN_MIDDLE,  false, false, 0, 0, false },
+  { BTN_DN_PIN, BTN_RIGHT, BTN_MIDDLE, false, false, 0, 0, false },
 };
 const int NUM_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 
