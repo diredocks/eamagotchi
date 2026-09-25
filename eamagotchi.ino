@@ -23,9 +23,10 @@ unsigned long last_button_ms = 0;
 unsigned long last_screen_update_ms = 0;
 
 ButtonState buttons[] = {
-  // { BTN_A_PIN, BTN_LEFT,   false, false, 0 },
-  { BTN_UP_PIN, BTN_MIDDLE, false, false, 0 },
-  { BTN_DN_PIN, BTN_RIGHT,  false, false, 0 },
+  // UP: short press = MIDDLE, long press = LEFT (pulsed once)
+  { BTN_UP_PIN, BTN_MIDDLE, BTN_LEFT,  false, false, 0, 0, false },
+  // DN: RIGHT, held for as long as the physical button is held (no long press)
+  { BTN_DN_PIN, BTN_RIGHT,  BTN_RIGHT, false, false, 0, 0, false },
 };
 const int NUM_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 

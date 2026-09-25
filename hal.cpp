@@ -63,8 +63,26 @@ static void hal_play_frequency(bool_t en) { (void)en; }
 static void* hal_malloc(u32_t size) { return malloc(size); }
 static void hal_free(void *ptr) { free(ptr); }
 
+// Scheduled auto-release timestamps for pulsed buttons, indexed by button_t.
+static unsigned long pulse_release_ms[4] = {0, 0, 0, 0};
+
+// Press the button now and schedule its release, so the emulator sees a clean
+// pulse instead of a press/release in the same instant.
+static void emitPulse(button_t btn) {
+  tamalib_set_button(btn, BTN_STATE_PRESSED);
+  pulse_release_ms[btn] = millis() + BTN_EMU_HOLD_MS;
+}
+
 void pollButtons() {
   unsigned long now = millis();
+
+  // release any pulsed button whose hold time has elapsed
+  for (int b = 0; b < 4; b++) {
+    if (pulse_release_ms[b] && now >= pulse_release_ms[b]) {
+      tamalib_set_button((button_t)b, BTN_STATE_RELEASED);
+      pulse_release_ms[b] = 0;
+    }
+  }
 
   for (int i = 0; i < NUM_BUTTONS; i++) {
     // check if the ISR flagged a press (instant capture)
@@ -74,6 +92,7 @@ void pollButtons() {
     }
 
     bool current = (digitalRead(buttons[i].pin) == LOW) || isr_pressed;
+    bool has_long = (buttons[i].long_btn != buttons[i].tama_btn);
 
     if (current != buttons[i].stable_state) {
       // reading differs from stable state — track as pending
@@ -84,15 +103,34 @@ void pollButtons() {
       } else if (now - buttons[i].pending_since >= BTN_DEBOUNCE_MS) {
         // candidate held for debounce period — accept it
         buttons[i].stable_state = current;
-        tamalib_set_button(buttons[i].tama_btn,
-                           current ? BTN_STATE_PRESSED : BTN_STATE_RELEASED);
         if (current) {
-          last_button_ms = now; // reset idle timeout
+          buttons[i].press_started = now;
+          buttons[i].long_fired = false;
+          if (!has_long) {
+            tamalib_set_button(buttons[i].tama_btn, BTN_STATE_PRESSED);
+          }
+        } else {
+          if (!has_long) {
+            tamalib_set_button(buttons[i].tama_btn, BTN_STATE_RELEASED);
+          } else if (!buttons[i].long_fired) {
+            // released before the long-press threshold: it was a short press
+            emitPulse(buttons[i].tama_btn);
+          }
+          // if long_fired, the long-press pulse was already emitted
         }
+        last_button_ms = now; // reset idle timeout
       }
     } else {
       // reading matches stable state — reset pending
       buttons[i].pending_state = current;
+    }
+
+    // fire the long-press button exactly once while still held
+    if (has_long && buttons[i].stable_state && !buttons[i].long_fired &&
+        now - buttons[i].press_started >= BTN_LONGPRESS_MS) {
+      buttons[i].long_fired = true;
+      emitPulse(buttons[i].long_btn);
+      last_button_ms = now;
     }
   }
 }

@@ -21,10 +21,13 @@ extern unsigned long last_screen_update_ms;
 
 struct ButtonState {
   uint8_t pin;
-  button_t tama_btn;
+  button_t tama_btn; // button emitted on a short press
+  button_t long_btn; // button emitted once on a long press (== tama_btn disables long press)
   bool stable_state; // Last confirmed/registered state
   bool pending_state; // Candidate state being debounced
   unsigned long pending_since; // millis() when pending_state was first seen
+  unsigned long press_started; // millis() when the debounced press was accepted
+  bool long_fired; // whether long_btn was already emitted for this hold
 };
 extern ButtonState buttons[];
 extern const int   NUM_BUTTONS;
