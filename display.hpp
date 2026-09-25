@@ -24,9 +24,6 @@ void renderScreenFull();
 // Queue a partial refresh (fast but may ghost).
 void renderScreenPartial();
 
-// Create the render mutex. Call once from setup() before creating displayTask().
-void displayInit();
-
 // FreeRTOS task that performs the blocking e-ink refreshes.
 void displayTask(void *param);
 

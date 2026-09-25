@@ -22,6 +22,8 @@ bool_t prev_icon_buffer[TAMA_ICON_NUM];
 unsigned long last_button_ms = 0;
 unsigned long last_screen_update_ms = 0;
 
+SemaphoreHandle_t render_mutex = NULL;
+
 ButtonState buttons[] = {
   // UP: short press = MIDDLE, long press = LEFT (pulsed once)
   { BTN_UP_PIN, BTN_MIDDLE, BTN_LEFT,  false, false, 0, 0, false },
@@ -63,7 +65,7 @@ void setup() {
   // TODO: use initial=false on timer wakes to avoid a full hardware clear
   display.init(115200);
   display.setRotation(0);
-  displayInit();
+  render_mutex = xSemaphoreCreateMutex();
   Serial.println("[EAMA] display initialized");
 
   // load ROM from PROGMEM
@@ -92,7 +94,7 @@ void setup() {
 
   // run blocking e-ink refreshes on the other core so button polling and the
   // emulator keep running while the panel updates
-  xTaskCreatePinnedToCore(displayTask, "display", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 1, NULL, 0);
   Serial.println("[EAMA] display task started");
 
   Serial.println("[EAMA] entering interactive mode");

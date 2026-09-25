@@ -6,8 +6,8 @@
 #include "display.hpp"
 
 // Staging frame published by the main loop and consumed by displayTask().
-// Only ever touched under render_mutex.
-static SemaphoreHandle_t render_mutex = nullptr;
+// The buffers are only touched under render_mutex; the pending flags are also
+// volatile so the task can poll them without locking.
 static bool_t render_matrix_buffer[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
 static bool_t render_icon_buffer[TAMA_ICON_NUM];
 static volatile bool render_pending = false;
@@ -70,8 +70,60 @@ void renderScreen() { enqueueFrame(false); }
 void renderScreenFull() { enqueueFrame(true); }
 void renderScreenPartial() { enqueueFrame(false); }
 
-void displayInit() {
-  render_mutex = xSemaphoreCreateMutex();
+// Copy the latest published frame out of the staging buffers. Returns false
+// when there is nothing pending.
+static bool takePendingFrame(bool_t matrix[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH],
+                             bool_t icons[TAMA_ICON_NUM], bool *full) {
+  if (!render_pending) return false;
+
+  xSemaphoreTake(render_mutex, portMAX_DELAY);
+  render_pending = false;
+  *full = render_full_pending;
+  render_full_pending = false;
+  memcpy(matrix, render_matrix_buffer, sizeof(render_matrix_buffer));
+  memcpy(icons, render_icon_buffer, sizeof(render_icon_buffer));
+  xSemaphoreGive(render_mutex);
+  return true;
+}
+
+// Re-publish the frame so it is retried after the rate-limit delay.
+static void deferFrame(bool full) {
+  xSemaphoreTake(render_mutex, portMAX_DELAY);
+  if (full) render_full_pending = true;
+  render_pending = true;
+  xSemaphoreGive(render_mutex);
+}
+
+// Whether the frame differs from the last one actually drawn.
+static bool frameChanged(const bool_t matrix[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH],
+                         const bool_t icons[TAMA_ICON_NUM]) {
+  for (int y = 0; y < TAMA_LCD_HEIGHT; y++) {
+    for (int x = 0; x < TAMA_LCD_WIDTH; x++) {
+      if (matrix[y][x] != prev_matrix_buffer[y][x]) return true;
+    }
+  }
+  for (int i = 0; i < TAMA_ICON_NUM; i++) {
+    if (icons[i] != prev_icon_buffer[i]) return true;
+  }
+  return false;
+}
+
+// Remember the frame before drawing it, so changes made during the blocking
+// refresh are not lost.
+static void commitFrame(const bool_t matrix[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH],
+                        const bool_t icons[TAMA_ICON_NUM]) {
+  memcpy(prev_matrix_buffer, matrix, sizeof(prev_matrix_buffer));
+  memcpy(prev_icon_buffer, icons, sizeof(prev_icon_buffer));
+}
+
+static void refreshPanel(const bool_t matrix[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH],
+                         const bool_t icons[TAMA_ICON_NUM], bool full) {
+  if (full) display.setFullWindow();
+  else display.setPartialWindow(0, 0, EPD_WIDTH, EPD_HEIGHT);
+  display.firstPage();
+  do {
+    renderFrameContent(matrix, icons);
+  } while (display.nextPage());
 }
 
 void displayTask(void *param) {
@@ -79,51 +131,27 @@ void displayTask(void *param) {
   static bool_t local_matrix[TAMA_LCD_HEIGHT][TAMA_LCD_WIDTH];
   static bool_t local_icons[TAMA_ICON_NUM];
 
-  for (;;) {
-    if (!render_pending) {
+  while (true) {
+    bool full;
+    if (!takePendingFrame(local_matrix, local_icons, &full)) {
       vTaskDelay(pdMS_TO_TICKS(5));
       continue;
     }
 
-    bool full;
-    xSemaphoreTake(render_mutex, portMAX_DELAY);
-    render_pending = false;
-    full = render_full_pending;
-    render_full_pending = false;
-    memcpy(local_matrix, render_matrix_buffer, sizeof(local_matrix));
-    memcpy(local_icons, render_icon_buffer, sizeof(local_icons));
-    xSemaphoreGive(render_mutex);
-
     // Skip if nothing actually changed (full refreshes always run)
-    bool changed = full;
-    for (int y = 0; y < TAMA_LCD_HEIGHT && !changed; y++) {
-      for (int x = 0; x < TAMA_LCD_WIDTH && !changed; x++) {
-        if (local_matrix[y][x] != prev_matrix_buffer[y][x]) changed = true;
-      }
-    }
-    for (int i = 0; i < TAMA_ICON_NUM && !changed; i++) {
-      if (local_icons[i] != prev_icon_buffer[i]) changed = true;
-    }
-    if (!changed) continue;
+    if (!full && !frameChanged(local_matrix, local_icons)) continue;
 
     // Rate limit: don't refresh faster than the e-ink can handle
     unsigned long now = millis();
     if (now - last_screen_update_ms < TAMA_SCREEN_MIN_MS) {
-      render_pending = true;
+      deferFrame(full);
       vTaskDelay(pdMS_TO_TICKS(10));
       continue;
     }
     last_screen_update_ms = now;
 
     // Commit prev before drawing so changes made during the refresh are kept
-    memcpy(prev_matrix_buffer, local_matrix, sizeof(local_matrix));
-    memcpy(prev_icon_buffer, local_icons, sizeof(local_icons));
-
-    if (full) display.setFullWindow();
-    else display.setPartialWindow(0, 0, EPD_WIDTH, EPD_HEIGHT);
-    display.firstPage();
-    do {
-      renderFrameContent(local_matrix, local_icons);
-    } while (display.nextPage());
+    commitFrame(local_matrix, local_icons);
+    refreshPanel(local_matrix, local_icons, full);
   }
 }
